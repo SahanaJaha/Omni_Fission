@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Orthogonal Expansion Game</title>
+  <title>Omni-Fission</title>
   <style>
     :root { --bg:#0b0f14; --card:#121923; --ink:#dfe7f1; --muted:#8fa3b8; --accent:#59f; }
     html,body{height:100%;}
@@ -38,10 +38,10 @@
 <body>
   <div class="wrap">
     <header>
-      <h1>Orthogonal Expansion (2–4 targets) – Browser Edition</h1>
+      <h1>Omni-Fission</h1>
       <div class="row panel">
-        <label>Rows <input id="rows" type="number" min="2" max="60" value="10"></label>
-        <label>Cols <input id="cols" type="number" min="2" max="60" value="14"></label>
+        <label>Rows <input id="rows" type="number" min="2" max="60" value="4"></label>
+        <label>Cols <input id="cols" type="number" min="2" max="60" value="4"></label>
         <button id="newGame">New Game</button>
         <button id="randomize" class="secondary">Random 6 stones</button>
         <button id="setupBtn" class="secondary">Custom Setup</button>
@@ -63,16 +63,16 @@
       <canvas id="board" width="720" height="540" aria-label="Game board" tabindex="0"></canvas>
 
       <aside class="sidebar">
-        <div class="legend">
+        <!-- <div class="legend">
           <div class="dot w"></div><span>White = 1</span>
           <div class="dot b"></div><span>Black = 2</span>
-        </div>
+        </div> -->
         <div class="row" style="margin:6px 0 10px">
           <button id="confirm" disabled>Confirm Move</button>
           <button id="cancel" class="secondary" disabled>Cancel</button>
         </div>
         <div class="hint">Rule: On your turn pick one of your stones, then choose 2–4 <em>orthogonal</em> empty neighbours to fill. The original stone is removed.
-          If you have no legal origin with ≥2 empty orthogonal neighbours, you pass.
+          If you have no legal origin with ≥2 empty orthogonal neighbours, you lose.
         </div>
         <h3 style="margin:12px 0 6px; font-size:14px; color:#cfe0ff">Move Log</h3>
         <div class="log" id="log" role="log"></div>
@@ -150,13 +150,19 @@
 
       // canvas fit
       resizeCanvasToFit();
+      if (enforceImmediateEndIfNoMoves()) return;
     }
 
     function setStatus(extra=""){
-      const t = (turn===WHITE?"White":"Black");
-      let p = '';
-      if (phase === 'setup') p = 'setup: click to place (1=W, 2=B, 0=erase)';
-      else p = phase==='select-origin' ? 'select a stone' : 'choose 2–4 targets';
+      // During setup, show only the instruction text
+      if (phase === 'setup') {
+        statusEl.textContent = "Click the coloured stone and where to place on the board";
+        return;
+      }
+
+      // Normal (non-setup) status
+      const t = (turn===WHITE ? "White" : "Black");
+      const p = (phase==='select-origin') ? 'select a stone' : 'choose 2–4 targets';
       statusEl.textContent = `${t}'s turn · ${p} ${extra}`.trim();
     }
 
@@ -237,15 +243,22 @@
       return false;
     }
 
+    function enforceImmediateEndIfNoMoves() {
+      if (!hasAnyMove(turn)) {
+        endGameDueToNoMoves(turn);
+        return true; // ended
+      }
+      return false;
+    }
     // ----- Setup mode helpers -----
     function enterSetup() {
       setupMode = true;
       phase = 'setup';
-      initGrid(R, C); // fresh board; remove this line if you want to edit current board
+      initGrid(R, C); // fresh board; keep if you want a blank canvas
       setupTools.style.display = 'flex';
       confirmBtn.disabled = true;
       cancelBtn.disabled = true;
-      setStatus('· Setup mode — click to place stones (1=White, 2=Black, 0=Erase)');
+      setStatus();   // <-- now shows only the instruction line
       draw();
     }
 
@@ -253,8 +266,8 @@
       setupMode = false;
       setupTools.style.display = 'none';
       phase = 'select-origin';
-      turn = WHITE; // White starts
-      setStatus();
+      turn = WHITE; // White starts after setup
+      setStatus();  // <-- now shows "White's turn · select a stone"
       draw();
     }
 
@@ -266,7 +279,8 @@
     function endGameDueToNoMoves(noMovePlayer){
       const winner = (noMovePlayer === WHITE) ? BLACK : WHITE;
       const score = countStones();
-      log(`Game over. ${nameOf(winner)} wins (opponent had no legal move). White:${score.white} · Black:${score.black}`);
+      // log(`Game over. ${nameOf(winner)} wins (opponent had no legal move). White:${score.white} · Black:${score.black}`);
+      log(`Game over. ${nameOf(winner)} wins (opponent had no legal move)`);
       phase = 'game-over';
       setStatus('· Game over');
       draw();
@@ -276,6 +290,7 @@
 
     // --- Interaction ---
     canvas.addEventListener('click', (e)=>{
+      if (phase === 'select-origin' && enforceImmediateEndIfNoMoves()) return;
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left - margin;
       const y = e.clientY - rect.top - margin;
@@ -348,8 +363,9 @@
     });
 
     confirmBtn.addEventListener('click', ()=>{
-      if(phase!=='select-targets') return;
-      if(selectedTargets.size<2 || selectedTargets.size>4) return;
+      if (phase !== 'select-targets') return;
+      if (selectedTargets.size < 2 || selectedTargets.size > 4) return;
+
       const [ro,co] = origin;
       grid[ro][co] = EMPTY; // remove origin
       selectedTargets.forEach(s=>{
@@ -359,29 +375,25 @@
       log(`${nameOf(turn)}: (${ro+1},${co+1}) -> { ${[...selectedTargets].map(s=>{
         const [r,c]=s.split(',').map(Number); return `(${r+1},${c+1})`;}).join(', ')} }`);
 
+      // reset selection
       origin=null; options=[]; selectedTargets.clear(); phase='select-origin';
+
+      // switch turn
       turn = (turn===WHITE)? BLACK : WHITE;
 
-      if(!hasAnyMove(turn)){
-        log(`No legal move for ${nameOf(turn)} (pass)`);
-        turn = (turn===WHITE)? BLACK : WHITE; // pass back
-        if(!hasAnyMove(turn)){
-          const score = countStones();
-          log(`Game over. White:${score.white} · Black:${score.black}`);
-          setStatus('· Game over');
-          draw();
-          return;
-        }
-      }
+      // END IMMEDIATELY if the next player has no legal move
+      if (enforceImmediateEndIfNoMoves()) return;
+
       setStatus(); draw();
     });
 
-    cancelBtn.addEventListener('click', cancelSelection);
+
+    // cancelBtn.addEventListener('click', cancelSelection);
 
     function cancelSelection(){ origin=null; options=[]; selectedTargets.clear(); phase='select-origin'; setStatus(); draw(); }
 
     newBtn.addEventListener('click', newGame);
-    rndBtn.addEventListener('click', ()=>{ newGame(); randomStart(3); draw(); log('Randomized start (3 each)'); });
+    rndBtn.addEventListener('click', ()=>{ newGame(); randomStart(1); draw(); log('Randomized start (1 each)'); });
 
     // Setup buttons
     setupBtn.addEventListener('click', enterSetup);
@@ -433,6 +445,13 @@
     }
 
     window.addEventListener("resize", resizeCanvasToFit);
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !confirmBtn.disabled) {
+        confirmBtn.click();
+      }
+    });
+
 
     // bootstrap
     newGame();
