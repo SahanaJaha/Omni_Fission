@@ -266,9 +266,16 @@
       setupMode = false;
       setupTools.style.display = 'none';
       phase = 'select-origin';
-      turn = WHITE; // White starts after setup
-      setStatus();  // <-- now shows "White's turn · select a stone"
+      turn = WHITE; // White starts
+
+      // 👇 Reset move log and note the custom start
+      resetLogWith('Custom setup applied');
+
+      setStatus();  // now shows "White's turn · select a stone"
       draw();
+
+      // If you added the immediate-end rule, keep this:
+      if (typeof enforceImmediateEndIfNoMoves === 'function' && enforceImmediateEndIfNoMoves()) return;
     }
 
     function clearSetup() {
@@ -284,6 +291,11 @@
       phase = 'game-over';
       setStatus('· Game over');
       draw();
+    }
+
+    function resetLogWith(message) {
+      logEl.innerHTML = '';
+      if (message) log(message);
     }
 
     function opponentOf(p){ return p===WHITE ? BLACK : WHITE; }
@@ -393,7 +405,12 @@
     function cancelSelection(){ origin=null; options=[]; selectedTargets.clear(); phase='select-origin'; setStatus(); draw(); }
 
     newBtn.addEventListener('click', newGame);
-    rndBtn.addEventListener('click', ()=>{ newGame(); randomStart(1); draw(); log('Randomized start (1 each)'); });
+    rndBtn.addEventListener('click', ()=>{
+      newGame();
+      randomStart(3);
+      draw();
+      resetLogWith('Randomized start (3 each)');
+    });
 
     // Setup buttons
     setupBtn.addEventListener('click', enterSetup);
