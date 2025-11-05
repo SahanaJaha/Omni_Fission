@@ -20,7 +20,12 @@
     .row{display:flex; gap:10px; align-items:center}
     .status{font-size:14px; color:#cfe0ff; margin-left:auto}
     .grid-wrap{display:grid; grid-template-columns: 1fr 340px; gap:14px; margin-top:14px}
-    canvas{background:#0d141f; border:1px solid #1e2a3a; border-radius:16px; box-shadow: inset 0 0 0 1px #0b111b, 0 20px 50px rgba(0,0,0,.25)}
+    canvas{
+      background:#2e151d;
+      border:1px solid #1e2a3a;
+      border-radius:16px;
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,.4), 0 20px 50px rgba(0,0,0,.35);
+    }
     .sidebar{background:var(--card); border:1px solid #1e2a3a; border-radius:16px; padding:14px}
     .log{height:260px; overflow:auto; background:#0d141f; border:1px solid #1e2a3a; border-radius:12px; padding:8px 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px}
     .legend{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:10px 0 6px}
@@ -39,7 +44,18 @@
         <label>Cols <input id="cols" type="number" min="2" max="60" value="14"></label>
         <button id="newGame">New Game</button>
         <button id="randomize" class="secondary">Random 6 stones</button>
+        <button id="setupBtn" class="secondary">Custom Setup</button>
         <span class="status" id="status">Loading…</span>
+
+        <!-- Setup palette -->
+        <span id="setupTools" style="display:none; gap:10px; align-items:center" class="row">
+          <span style="font-size:12px; color:#8fa3b8">Place:</span>
+          <label><input type="radio" name="tool" value="1" checked> White</label>
+          <label><input type="radio" name="tool" value="2"> Black</label>
+          <label><input type="radio" name="tool" value="0"> Eraser</label>
+          <button id="finishSetup">Done</button>
+          <button id="clearSetup" class="secondary">Clear</button>
+        </span>
       </div>
     </header>
 
@@ -76,10 +92,18 @@
     const rndBtn = document.getElementById('randomize');
     const confirmBtn = document.getElementById('confirm');
     const cancelBtn = document.getElementById('cancel');
+    const setupBtn = document.getElementById('setupBtn');
+    const setupTools = document.getElementById('setupTools');
+    const finishSetupBtn = document.getElementById('finishSetup');
+    const clearSetupBtn = document.getElementById('clearSetup');
+
+    // constants FIRST (fixes order bug)
+    const EMPTY=0, WHITE=1, BLACK=2;
+
+    let setupMode = false;
+    let setupTool = WHITE; // 1=white, 2=black, 0=eraser
 
     let R=10, C=14, grid=[], cell=40, margin=20;
-
-    const EMPTY=0, WHITE=1, BLACK=2;
     let turn = WHITE; // white starts
 
     let origin = null;            // [r,c]
@@ -94,7 +118,6 @@
     }
 
     function centerStarts(){
-      // Simple symmetric start
       const rMid = Math.floor(R/2), cMid = Math.floor(C/2);
       grid[rMid][Math.max(0,cMid-3)] = WHITE;
       grid[rMid][Math.min(C-1,cMid+3)] = BLACK;
@@ -116,34 +139,39 @@
       R = clamp(parseInt(rowsInput.value)||10,2,60);
       C = clamp(parseInt(colsInput.value)||14,2,60);
       origin=null; options=[]; selectedTargets.clear(); phase='select-origin'; turn=WHITE;
-      // dynamic cell size to fit canvas
-      const availW = canvas.width - margin*2, availH = canvas.height - margin*2;
-      cell = Math.floor(Math.min(availW/C, availH/R));
+
+      // leave setup mode if it was on
+      setupMode = false;
+      setupTools.style.display = 'none';
+
       initGrid(R,C); centerStarts();
       setStatus();
-      draw();
       logEl.innerHTML='';
+
+      // canvas fit
+      resizeCanvasToFit();
     }
 
     function setStatus(extra=""){
       const t = (turn===WHITE?"White":"Black");
-      const p = phase==='select-origin'?"select a stone": `choose 2–4 targets`;
+      let p = '';
+      if (phase === 'setup') p = 'setup: click to place (1=W, 2=B, 0=erase)';
+      else p = phase==='select-origin' ? 'select a stone' : 'choose 2–4 targets';
       statusEl.textContent = `${t}'s turn · ${p} ${extra}`.trim();
     }
 
     function draw(){
       ctx.clearRect(0,0,canvas.width,canvas.height);
       // board background
-      ctx.fillStyle = '#0b111b';
+      ctx.fillStyle = '#4b1f2f'; // deep maroon board fill
       roundRect(ctx, margin-6, margin-6, C*cell+12, R*cell+12, 14);
       ctx.fill();
       // grid lines
-      for(let r=0;r<=R;r++) line(margin, margin+r*cell, margin+C*cell, margin+r*cell, '#1e2a3a');
-      for(let c=0;c<=C;c++) line(margin+c*cell, margin, margin+c*cell, margin+R*cell, '#1e2a3a');
+      for(let r=0;r<=R;r++) line(margin, margin+r*cell, margin+C*cell, margin+r*cell, '#815868');
+      for(let c=0;c<=C;c++) line(margin+c*cell, margin, margin+c*cell, margin+R*cell, '#815868');
 
       // highlights for options
-      if(origin){
-        // origin glow
+      if(origin && phase==='select-targets'){
         const [ro,co] = origin;
         highlightCell(ro,co,'rgba(255,255,255,0.12)');
         options.forEach(([r,c])=>{
@@ -156,14 +184,14 @@
       for(let r=0;r<R;r++){
         for(let c=0;c<C;c++){
           if(grid[r][c]!==EMPTY){
-            drawStone(r,c, grid[r][c]===WHITE? '#f2f5f9':'#0a0f15', true);
+            drawStone(r,c, grid[r][c]===WHITE? '#f2f5f9' : '#111418', true);
           }
         }
       }
 
       // origin indicator
-      if(origin){
-        drawRing(origin[0],origin[1],'#59f');
+      if(origin && phase==='select-targets'){
+        drawRing(origin[0],origin[1],'#ff99c8');
       }
 
       // enable/disable buttons
@@ -182,7 +210,6 @@
       if(shadow){ ctx.shadowColor='rgba(0,0,0,.6)'; ctx.shadowBlur=8; }
       ctx.fillStyle = fill; circle(ctx,x,y,rad); ctx.fill();
       ctx.shadowBlur=0;
-      // subtle rim
       ctx.strokeStyle = 'rgba(255,255,255,.08)'; ctx.lineWidth=1; circle(ctx,x,y,rad); ctx.stroke();
     }
 
@@ -190,6 +217,7 @@
       const x = margin + c*cell + cell/2; const y = margin + r*cell + cell/2; const rad = cell*0.42;
       ctx.strokeStyle=color; ctx.lineWidth=2; circle(ctx,x,y,rad); ctx.stroke();
     }
+
 
     function circle(ctx,x,y,r){ ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); }
     function line(x1,y1,x2,y2,color){ ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.strokeStyle=color; ctx.lineWidth=1; ctx.stroke(); }
@@ -200,11 +228,7 @@
     // --- Rules Helpers ---
     function orth(r,c){ return [[r-1,c],[r+1,c],[r,c-1],[r,c+1]].filter(([i,j])=> i>=0&&i<R&&j>=0&&j<C); }
     function empties(list){ return list.filter(([r,c])=> grid[r][c]===EMPTY); }
-
-    function legalTargetsFrom(r,c){
-      // From origin (must be your stone), available orthogonal empties
-      return empties(orth(r,c));
-    }
+    function legalTargetsFrom(r,c){ return empties(orth(r,c)); }
 
     function hasAnyMove(player){
       for(let r=0;r<R;r++) for(let c=0;c<C;c++) if(grid[r][c]===player){
@@ -213,6 +237,43 @@
       return false;
     }
 
+    // ----- Setup mode helpers -----
+    function enterSetup() {
+      setupMode = true;
+      phase = 'setup';
+      initGrid(R, C); // fresh board; remove this line if you want to edit current board
+      setupTools.style.display = 'flex';
+      confirmBtn.disabled = true;
+      cancelBtn.disabled = true;
+      setStatus('· Setup mode — click to place stones (1=White, 2=Black, 0=Erase)');
+      draw();
+    }
+
+    function exitSetup() {
+      setupMode = false;
+      setupTools.style.display = 'none';
+      phase = 'select-origin';
+      turn = WHITE; // White starts
+      setStatus();
+      draw();
+    }
+
+    function clearSetup() {
+      initGrid(R, C);
+      draw();
+    }
+
+    function endGameDueToNoMoves(noMovePlayer){
+      const winner = (noMovePlayer === WHITE) ? BLACK : WHITE;
+      const score = countStones();
+      log(`Game over. ${nameOf(winner)} wins (opponent had no legal move). White:${score.white} · Black:${score.black}`);
+      phase = 'game-over';
+      setStatus('· Game over');
+      draw();
+    }
+
+    function opponentOf(p){ return p===WHITE ? BLACK : WHITE; }
+
     // --- Interaction ---
     canvas.addEventListener('click', (e)=>{
       const rect = canvas.getBoundingClientRect();
@@ -220,6 +281,14 @@
       const y = e.clientY - rect.top - margin;
       const c = Math.floor(x / cell); const r = Math.floor(y / cell);
       if(r<0||r>=R||c<0||c>=C) return;
+
+      // SETUP MODE: direct place/erase
+      if (phase === 'setup') {
+        if (setupTool === EMPTY) grid[r][c] = EMPTY;
+        else grid[r][c] = setupTool;
+        draw();
+        return;
+      }
 
       if(phase==='select-origin'){
         if(grid[r][c]===turn){
@@ -232,7 +301,6 @@
           setStatus(); draw();
         }
       } else if(phase==='select-targets'){
-        // toggle if clicked in options, else if clicked origin, cancel selection
         if(origin && r===origin[0] && c===origin[1]){ cancelSelection(); return; }
         if(options.some(([ri,ci])=>ri===r&&ci===c)){
           const k = key([r,c]);
@@ -240,6 +308,42 @@
           else if(selectedTargets.size<4){ selectedTargets.add(k); }
           draw();
         }
+      }
+    });
+
+    confirmBtn.addEventListener('click', ()=>{
+      if(phase!=='select-targets') return;
+      if(selectedTargets.size<2 || selectedTargets.size>4) return;
+
+      const [ro,co] = origin;
+      grid[ro][co] = EMPTY; // remove origin
+      selectedTargets.forEach(s=>{
+        const [r,c] = s.split(',').map(Number);
+        grid[r][c] = turn;
+      });
+      log(`${nameOf(turn)}: (${ro+1},${co+1}) -> { ${[...selectedTargets].map(s=>{
+        const [r,c]=s.split(',').map(Number); return `(${r+1},${c+1})`;}).join(', ')} }`);
+
+      // reset selection
+      origin=null; options=[]; selectedTargets.clear(); phase='select-origin';
+
+      // next player
+      turn = (turn===WHITE)? BLACK : WHITE;
+
+      // END IMMEDIATELY if the next player has no legal move
+      if(!hasAnyMove(turn)){
+        endGameDueToNoMoves(turn);
+        return;
+      }
+
+      setStatus(); draw();
+    });
+
+    // Setup palette radio
+    setupTools.addEventListener('change', (e) => {
+      if (e.target && e.target.name === 'tool') {
+        setupTool = parseInt(e.target.value, 10);
+        setStatus(`· Setup mode — tool: ${setupTool===WHITE?'White':setupTool===BLACK?'Black':'Eraser'}`);
       }
     });
 
@@ -255,16 +359,13 @@
       log(`${nameOf(turn)}: (${ro+1},${co+1}) -> { ${[...selectedTargets].map(s=>{
         const [r,c]=s.split(',').map(Number); return `(${r+1},${c+1})`;}).join(', ')} }`);
 
-      // next turn
       origin=null; options=[]; selectedTargets.clear(); phase='select-origin';
       turn = (turn===WHITE)? BLACK : WHITE;
 
-      // handle passes / end
       if(!hasAnyMove(turn)){
         log(`No legal move for ${nameOf(turn)} (pass)`);
         turn = (turn===WHITE)? BLACK : WHITE; // pass back
         if(!hasAnyMove(turn)){
-          // both cannot move => end
           const score = countStones();
           log(`Game over. White:${score.white} · Black:${score.black}`);
           setStatus('· Game over');
@@ -279,8 +380,13 @@
 
     function cancelSelection(){ origin=null; options=[]; selectedTargets.clear(); phase='select-origin'; setStatus(); draw(); }
 
-    newBtn.addEventListener('click', ()=>{ newGame(); });
+    newBtn.addEventListener('click', newGame);
     rndBtn.addEventListener('click', ()=>{ newGame(); randomStart(3); draw(); log('Randomized start (3 each)'); });
+
+    // Setup buttons
+    setupBtn.addEventListener('click', enterSetup);
+    finishSetupBtn.addEventListener('click', exitSetup);
+    clearSetupBtn.addEventListener('click', clearSetup);
 
     function countStones(){
       let w=0,b=0; for(let r=0;r<R;r++) for(let c=0;c<C;c++){ if(grid[r][c]===WHITE)w++; else if(grid[r][c]===BLACK)b++; }
@@ -300,35 +406,37 @@
       setTimeout(()=> setStatus(), 1200);
     }
 
-    // bootstrap
-    newGame();
-    // handle HiDPI crispness
+    // canvas size / HiDPI
     function resizeCanvasToFit() {
-      // Available screen space minus some margins around the board
-      const maxW = window.innerWidth * 0.9;
-      const maxH = window.innerHeight * 0.9;
+      const parent = canvas.parentElement;
+      const maxW = (parent?.clientWidth || window.innerWidth) * 0.98;
+      const maxH = window.innerHeight * 0.85;
 
-      // Compute max cell size that keeps board inside window
-      const cellW = Math.floor(maxW / C);
-      const cellH = Math.floor(maxH / R);
-      cell = Math.max(10, Math.min(cellW, cellH)); // enforce minimum cell size
+      const usableW = Math.max(100, maxW - margin * 2);
+      const usableH = Math.max(100, maxH - margin * 2);
 
-      // Update canvas real size
-      canvas.style.width = (C * cell) + "px";
-      canvas.style.height = (R * cell) + "px";
+      const cellW = Math.floor(usableW / C);
+      const cellH = Math.floor(usableH / R);
+      cell = Math.max(10, Math.min(cellW, cellH));
 
-      // Account for HiDPI screens
+      const cssW = C * cell + margin * 2;
+      const cssH = R * cell + margin * 2;
+      canvas.style.width = cssW + "px";
+      canvas.style.height = cssH + "px";
+
       const dpr = window.devicePixelRatio || 1;
-      canvas.width = Math.floor(C * cell * dpr);
-      canvas.height = Math.floor(R * cell * dpr);
+      canvas.width = Math.floor(cssW * dpr);
+      canvas.height = Math.floor(cssH * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       draw();
     }
 
     window.addEventListener("resize", resizeCanvasToFit);
-    resizeCanvasToFit();
 
+    // bootstrap
+    newGame();
+    resizeCanvasToFit();
   </script>
 </body>
 </html>
