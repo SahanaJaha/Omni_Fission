@@ -303,15 +303,32 @@
     // bootstrap
     newGame();
     // handle HiDPI crispness
-    function resizeCanvasForDPR(){
-      const ratio = window.devicePixelRatio || 1;
-      const cssW = canvas.clientWidth || canvas.width;
-      const cssH = canvas.clientHeight || canvas.height;
-      canvas.width = cssW * ratio; canvas.height = cssH * ratio; ctx.setTransform(ratio,0,0,ratio,0,0);
+    function resizeCanvasToFit() {
+      // Available screen space minus some margins around the board
+      const maxW = window.innerWidth * 0.9;
+      const maxH = window.innerHeight * 0.9;
+
+      // Compute max cell size that keeps board inside window
+      const cellW = Math.floor(maxW / C);
+      const cellH = Math.floor(maxH / R);
+      cell = Math.max(10, Math.min(cellW, cellH)); // enforce minimum cell size
+
+      // Update canvas real size
+      canvas.style.width = (C * cell) + "px";
+      canvas.style.height = (R * cell) + "px";
+
+      // Account for HiDPI screens
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.floor(C * cell * dpr);
+      canvas.height = Math.floor(R * cell * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
       draw();
     }
-    window.addEventListener('resize', resizeCanvasForDPR);
-    resizeCanvasForDPR();
+
+    window.addEventListener("resize", resizeCanvasToFit);
+    resizeCanvasToFit();
+
   </script>
 </body>
 </html>
