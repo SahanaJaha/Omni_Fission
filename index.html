@@ -33,6 +33,7 @@
     .w{background:#f2f5f9; border:1px solid #c8d0da}
     .b{background:#070b10; border:1px solid #2b374a}
     .hint{color:var(--muted); font-size:12px}
+    button.active {outline:2px solid var(--accent);}
   </style>
 </head>
 <body>
@@ -67,6 +68,11 @@
           <div class="dot w"></div><span>White = 1</span>
           <div class="dot b"></div><span>Black = 2</span>
         </div> -->
+        <h3 style="margin:10px 0 6px; font-size:14px; color:#cfe0ff">Starting Player</h3>
+        <div class="row" style="gap:8px; margin-bottom:8px">
+          <button id="startWhite" class="secondary">White starts</button>
+          <button id="startBlack" class="secondary">Black starts</button>
+        </div>
         <div class="row" style="margin:6px 0 10px">
           <button id="confirm" disabled>Confirm Move</button>
           <button id="cancel" class="secondary" disabled>Cancel</button>
@@ -96,13 +102,16 @@
     const setupTools = document.getElementById('setupTools');
     const finishSetupBtn = document.getElementById('finishSetup');
     const clearSetupBtn = document.getElementById('clearSetup');
+    const startWhiteBtn = document.getElementById('startWhite');
+    const startBlackBtn = document.getElementById('startBlack');
+
 
     // constants FIRST (fixes order bug)
     const EMPTY=0, WHITE=1, BLACK=2;
 
     let setupMode = false;
     let setupTool = WHITE; // 1=white, 2=black, 0=eraser
-
+    let startingPlayer = WHITE;
     let R=10, C=14, grid=[], cell=40, margin=20;
     let turn = WHITE; // white starts
 
@@ -138,7 +147,7 @@
     function newGame(){
       R = clamp(parseInt(rowsInput.value)||10,2,60);
       C = clamp(parseInt(colsInput.value)||14,2,60);
-      origin=null; options=[]; selectedTargets.clear(); phase='select-origin'; turn=WHITE;
+      origin=null; options=[]; selectedTargets.clear(); phase='select-origin'; turn = startingPlayer;
 
       // leave setup mode if it was on
       setupMode = false;
@@ -164,6 +173,23 @@
       const t = (turn===WHITE ? "White" : "Black");
       const p = (phase==='select-origin') ? 'select a stone' : 'choose 2–4 targets';
       statusEl.textContent = `${t}'s turn · ${p} ${extra}`.trim();
+    }
+
+    function setStartingPlayer(p){
+      startingPlayer = p;
+      log(`Starting player set to ${nameOf(p)}`);
+
+      // Update button visuals (optional)
+      startWhiteBtn.classList.toggle('active', p === WHITE);
+      startBlackBtn.classList.toggle('active', p === BLACK);
+
+      // If we're not in setup, apply immediately
+      if (phase !== 'setup') {
+        turn = p;
+        setStatus();
+        draw();
+        if (typeof enforceImmediateEndIfNoMoves === 'function') enforceImmediateEndIfNoMoves();
+      }
     }
 
     function draw(){
@@ -266,7 +292,7 @@
       setupMode = false;
       setupTools.style.display = 'none';
       phase = 'select-origin';
-      turn = WHITE; // White starts
+      turn = startingPlayer; // White starts
 
       // 👇 Reset move log and note the custom start
       resetLogWith('Custom setup applied');
@@ -411,6 +437,9 @@
       draw();
       resetLogWith('Randomized start (3 each)');
     });
+
+    startWhiteBtn.addEventListener('click', ()=> setStartingPlayer(WHITE));
+    startBlackBtn.addEventListener('click', ()=> setStartingPlayer(BLACK));
 
     // Setup buttons
     setupBtn.addEventListener('click', enterSetup);
